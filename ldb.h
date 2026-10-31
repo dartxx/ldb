@@ -10,6 +10,7 @@
 #define LDB_INCLUDE_H_
 
 #include <stdio.h>
+#include <stdint.h>
 
 typedef struct LDB LDB;
 
@@ -17,7 +18,7 @@ const char *ldb_get_error();
 
 int ldb_init(const char *output_dir, LDB *ldb);
 void ldb_close(LDB *ldb);
-int ldb_add_int(LDB *ldb, const char *key, int value);
+int ldb_add_int(LDB *ldb, const char *key, int32_t value);
 
 #endif // LDB_INCLUDE_H_
 
@@ -32,6 +33,7 @@ int ldb_add_int(LDB *ldb, const char *key, int value);
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <stdint.h>
 
 #define DB_FILE_NAME "/db.ldb"
 #define DB_FILE_NAME_LEN (sizeof(DB_FILE_NAME) - 1)
@@ -88,6 +90,7 @@ int ldb_init(const char *output_dir, LDB *ldb) {
     }
     
     const size_t output_dir_len = strlen(output_dir);
+
     char *file_path = malloc(output_dir_len + DB_FILE_NAME_LEN + 1);
     if (!file_path) {
         LDB_SET_ERROR("failed to allocate memory");
@@ -137,11 +140,14 @@ static bool write_key_and_eqaul(const char *key, FILE *f) {
     return true;
 }
 
-int ldb_add_int(LDB *ldb, const char *key, int value) {
-    (void)value;
+int ldb_add_int(LDB *ldb, const char *key, int32_t value) {
     FILE *f = open_file(ldb->file_path, "ab");
     if (!f) return 1;
     write_key_and_eqaul(key, f);
+    if (fwrite(&value, sizeof(value), 1, f) != 1) {
+        LDB_SET_ERROR("failed to write integer\n");
+    }
+    fputc('\n', f);
     fclose(f);
     return 0;
 }

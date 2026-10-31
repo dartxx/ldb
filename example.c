@@ -16,6 +16,22 @@ int main() {
         PRINT_LDB_ERROR;
         return 1;
     }
+    if (ldb_add_int(&ldb, "fizz", 314) != 0) {
+        PRINT_LDB_ERROR;
+        return 1;
+    }
+    if (ldb_add_int(&ldb, "tuzz", 1488) != 0) {
+        PRINT_LDB_ERROR;
+        return 1;
+    }
+    if (ldb_add_int(&ldb, "buzz", 67) != 0) {
+        PRINT_LDB_ERROR;
+        return 1;
+    }
+    if (ldb_add_int(&ldb, "kazan", 76) != 0) {
+        PRINT_LDB_ERROR;
+        return 1;
+    }
 
     ldb_close(&ldb);
     return 0;
