@@ -33,6 +33,9 @@ int main() {
         return 1;
     }
 
+    int32_t data;
+    ldb_get_int(&ldb, "tuzz", &data);
+
     ldb_close(&ldb);
     return 0;
 }

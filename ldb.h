@@ -18,7 +18,9 @@ const char *ldb_get_error();
 
 int ldb_init(const char *output_dir, LDB *ldb);
 void ldb_close(LDB *ldb);
-int ldb_add_int(LDB *ldb, const char *key, int32_t value);
+
+int ldb_add_int(const LDB *ldb, const char *key, int32_t value);
+int ldb_get_int(const LDB *ldb, const char *key, int32_t *data);
 
 #endif // LDB_INCLUDE_H_
 
@@ -140,7 +142,7 @@ static bool write_key_and_eqaul(const char *key, FILE *f) {
     return true;
 }
 
-int ldb_add_int(LDB *ldb, const char *key, int32_t value) {
+int ldb_add_int(const LDB *ldb, const char *key, int32_t value) {
     FILE *f = open_file(ldb->file_path, "ab");
     if (!f) return 1;
     write_key_and_eqaul(key, f);
@@ -148,6 +150,29 @@ int ldb_add_int(LDB *ldb, const char *key, int32_t value) {
         LDB_SET_ERROR("failed to write integer\n");
     }
     fputc('\n', f);
+    fclose(f);
+    return 0;
+}
+
+//#define LDB_MAX_LINE_LEN 128
+static constexpr size_t ldb_max_line_len =  128;
+
+int ldb_get_int(const LDB *ldb, const char *key, int32_t *data) {
+    char line[ldb_max_line_len];
+    FILE *f = open_file(ldb->file_path, "rb");
+    if (!f) return 1;
+
+    fread(&line, sizeof(char), ldb_max_line_len, f);
+        printf("%s\n", line);
+        /*const char *found = strstr(line, DB_DELIMITER);
+        size_t key_len = found - line;
+        char founded_key[key_len + 1];
+        memcpy(founded_key, line, key_len);
+        founded_key[key_len] = '\0';
+        if (strcmp(key, founded_key) == 0) {
+            printf("our data target - %" PRId32 "\n", ++found);
+        }*/
+    
     fclose(f);
     return 0;
 }
