@@ -2,6 +2,5 @@
 #include "ldb.h"
 
 int main() {
-    ldb_init("path/where/file/stored");
-    return 0;
+    return ldb_init("./");
 }
