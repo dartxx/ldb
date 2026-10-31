@@ -1,41 +1,24 @@
 #define LDB_IMPLEMENTATION
 #include "ldb.h"
 
-#define PRINT_LDB_ERROR fprintf(stderr, ldb_get_error())
+#define LDB_INT_TEST(ldb, key, value) do { if (ldb_add_int(&ldb, key, value) != 0) { fprintf(stderr, ldb_get_error()); return 1; } } while (0)
 
 int main() {
     LDB ldb;
     
-    int s = ldb_init("./", &ldb);
-    if (s != 0) {
-        PRINT_LDB_ERROR;
+    if (ldb_init("./", &ldb) != 0) {
+        fprintf(stderr, ldb_get_error());
         return 1;
     }
 
-    if (ldb_add_int(&ldb, "key", 123) != 0) {
-        PRINT_LDB_ERROR;
-        return 1;
-    }
-    if (ldb_add_int(&ldb, "fizz", 314) != 0) {
-        PRINT_LDB_ERROR;
-        return 1;
-    }
-    if (ldb_add_int(&ldb, "tuzz", 1488) != 0) {
-        PRINT_LDB_ERROR;
-        return 1;
-    }
-    if (ldb_add_int(&ldb, "buzz", 67) != 0) {
-        PRINT_LDB_ERROR;
-        return 1;
-    }
-    if (ldb_add_int(&ldb, "kazan", 76) != 0) {
-        PRINT_LDB_ERROR;
-        return 1;
-    }
+    // ldb_add_string(&ldb, "tuzz", "val");
+    
+    LDB_INT_TEST(ldb, "fizz", 123);
+    // LDB_INT_TEST(ldb, "tuzz", 1488);
 
     int32_t data;
-    ldb_get_int(&ldb, "tuzz", &data);
-
+    ldb_get(&ldb, "tuzz", &data);
+    
     ldb_close(&ldb);
     return 0;
 }
