@@ -11,13 +11,16 @@ int main() {
         return 1;
     }
 
-    // ldb_add_string(&ldb, "tuzz", "val");
+    // ldb_add_string(&ldb, "fizz", "valizz");
     
-    // LDB_INT_TEST(ldb, "fizz", 123);
     // LDB_INT_TEST(ldb, "tuzz", 1488);
 
     int32_t data;
-    ldb_get(&ldb, "tuzz", &data);
+    ldb_get(&ldb, "tuzz", &data, 0);
+    printf("mega data tuzza - %d\n", data);
+    char str[128];
+    ldb_get(&ldb, "fizz", &str, 129);
+    printf("mega data fizza - %s\n", str);
     
     ldb_close(&ldb);
     return 0;
