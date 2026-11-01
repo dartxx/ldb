@@ -49,6 +49,34 @@ typedef struct LDB {
     char *file_path;
 } LDB;
 
+#define LDB_KEY_MAX_LEN 64
+#define LDB_STRING_VALUE_MAX_LEN 128
+
+typedef enum {
+    LDB_TYPE_INT,
+    LDB_TYPE_STRING,
+} LDB_RecordType;
+
+typedef struct {
+    char key[LDB_KEY_MAX_LEN];
+    LDB_RecordType type;
+    union {
+        int32_t i;
+        char    s[LDB_STRING_VALUE_MAX_LEN];
+    } value;
+} LDB_Record;
+
+#define LDB_RECORD_SIZE (sizeof(LDB_Record))
+
+#define MAKE_LDB_RECORD(r, key) do {                                           \
+    const size_t key_len = strlen(key);                                        \
+    if (key_len > LDB_KEY_MAX_LEN) {                                           \
+        LDB_SET_ERROR("key lenght must be lower than %d\n", LDB_KEY_MAX_LEN);  \
+        return 1;                                                              \
+    }                                                                          \
+    memcpy(r.key, key, key_len + 1);                                           \
+} while(0)
+
 #define LDB_ERROR_LEN 128
 
 static char ldb_error[LDB_ERROR_LEN];
@@ -121,16 +149,16 @@ void ldb_close(LDB *ldb) {
 
 #define CHECK_FILE_OPEN(f) do { if (!(f)) { LDB_SET_ERROR("failed to open file\n"); return 1; } } while (0)
 
-static int ldb_add(const LDB *ldb, const char *key, const void *data, size_t size) {
+// static int ldb_add(const LDB *ldb, const char *key, const void *data, size_t size, LDB_RecordType type) {
+static int ldb_add(const LDB *ldb, LDB_Record *record) {
     FILE *f = fopen(ldb->file_path, "ab");
     CHECK_FILE_OPEN(f);
 
-    // const size_t key_len = strlen(key);
-    // if (fwrite(key, sizeof(char), key_len, f) != key_len) {
-    //     LDB_SET_ERROR("failed to write key\n");
-    //     fclose(f);
-    //     return 1;
-    // }
+    if (fwrite(record, sizeof(*record), 1, f) != 1) {
+        LDB_SET_ERROR("failed to write record to db file\n");
+        fclose(f);
+        return 1;
+    }
 
     // if (fwrite(LDB_DELIMITER, sizeof(char), LDB_DELIMITER_LEN, f) != LDB_DELIMITER_LEN) {
     //     LDB_SET_ERROR("failed to write delimiter\n");
@@ -138,11 +166,11 @@ static int ldb_add(const LDB *ldb, const char *key, const void *data, size_t siz
     //     return 1;
     // }
 
-    if (size == 0 || fwrite(data, 1, size, f) != size) {
-        LDB_SET_ERROR("failed to write value\n");
-        fclose(f);
-        return 1;
-    }
+    // if (size == 0 || fwrite(data, 1, size, f) != size) {
+    //     LDB_SET_ERROR("failed to write value\n");
+    //     fclose(f);
+    //     return 1;
+    // }
 
     // if (fputc('\n', f) == EOF) {
     //     LDB_SET_ERROR("failed to write new line character\n");
@@ -155,12 +183,17 @@ static int ldb_add(const LDB *ldb, const char *key, const void *data, size_t siz
 }
 
 int ldb_add_int(const LDB *ldb, const char *key, int32_t value) {
-    return ldb_add(ldb, key, &value, sizeof(value));
+    LDB_Record r = {0};
+    MAKE_LDB_RECORD(r, key);
+    r.type = LDB_TYPE_INT;
+    r.value.i = value;
+    return ldb_add(ldb, &r);
+    // return ldb_add(ldb, key, &value, sizeof(value), LDB_TYPE_INT);
 }
 
-int ldb_add_string(const LDB *ldb, const char *key, const char *value) {
-    return ldb_add(ldb, key, value, strlen(value));
-}
+// int ldb_add_string(const LDB *ldb, const char *key, const char *value) {
+//     return ldb_add(ldb, key, value, strlen(value), LDB_TYPE_STRING);
+// }
 
 // TODO: try to fwrite structure and read it
 
@@ -168,11 +201,11 @@ int ldb_get(const LDB *ldb, const char *key, void *data) {
     FILE *f = fopen(ldb->file_path, "rb");
     CHECK_FILE_OPEN(f);
 
-    int num;
+    LDB_Record record;
 
-    fread(&num, 1, sizeof(num), f);
+    fread(&record, sizeof(record), 1, f);
     
-    printf("%d\n", num);
+    printf("%d\n", record.value.i);
 
     fclose(f);
     return 0;

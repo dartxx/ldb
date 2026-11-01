@@ -13,7 +13,7 @@ int main() {
 
     // ldb_add_string(&ldb, "tuzz", "val");
     
-    LDB_INT_TEST(ldb, "fizz", 123);
+    // LDB_INT_TEST(ldb, "fizz", 123);
     // LDB_INT_TEST(ldb, "tuzz", 1488);
 
     int32_t data;
