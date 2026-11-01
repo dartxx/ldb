@@ -1,27 +1,24 @@
 #define LDB_IMPLEMENTATION
 #include "ldb.h"
 
-#define LDB_INT_TEST(ldb, key, value) do { if (ldb_add_int(&ldb, key, value) != 0) { fprintf(stderr, ldb_get_error()); return 1; } } while (0)
-
 int main() {
     LDB ldb;
     
-    if (ldb_init("./", &ldb) != 0) {
+    if (ldb_init("./", &ldb) != LDB_OK) {
         fprintf(stderr, ldb_get_error());
         return 1;
     }
 
-    //ldb_add_string(&ldb, "fizz", "valizz");
+    ldb_add_string(&ldb, "name", "Ivan");
+    ldb_add_int(&ldb, "age", 16);
     
-    //LDB_INT_TEST(ldb, "tuzz", 1488);
-
-    int32_t data;
-    ldb_get(&ldb, "tuzz", &data, 0);
-    printf("mega data tuzza - %d\n", data);
-    char str[128];
-    ldb_get(&ldb, "fizz", &str, 129);
-    printf("mega data fizza - %s\n", str);
+    int32_t age;
+    ldb_get(&ldb, "age", &age, sizeof(age));
+    char name[24];
+    ldb_get(&ldb, "name", name, 24);
     
-    ldb_close(&ldb);
+    printf("name - %s, age - %d\n", name, age);
+    
+    ldb_free(&ldb);
     return 0;
 }

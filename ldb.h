@@ -5,8 +5,6 @@
     * Date: [2026-10-31]
 */
 
-// TODO: use error codes instead of numbers
-
 #ifndef LDB_INCLUDE_H_
 #define LDB_INCLUDE_H_
 
@@ -31,6 +29,7 @@ typedef enum {
 } LDB_Error;
 
 const char *ldb_get_error();
+void ldb_clear_error();
 
 LDB_Error ldb_init(const char *output_dir, LDB *ldb);
 LDB_Error ldb_free(LDB *ldb);
@@ -38,10 +37,7 @@ LDB_Error ldb_free(LDB *ldb);
 LDB_Error ldb_add_int(const LDB *ldb, const char *key, int32_t value);
 LDB_Error ldb_add_string(const LDB *ldb, const char *key, const char *value);
 
-// In this function, if you getting string, you should provide size of string
-// It must be more than LDB_STRING_VALUE_MAX_LEN
-
-LDB_Error ldb_get(const LDB *ldb, const char *key, void *data, size_t size);
+LDB_Error ldb_get(const LDB *ldb, const char *key, void *dst, size_t size);
 
 #endif // LDB_INCLUDE_H_
 
@@ -92,68 +88,60 @@ const char *ldb_get_error() {
     return ldb_error;
 }
 
-static bool is_file_exists(const char *file_path) {
-    FILE *f = fopen(file_path, "rb");
-    if (!f) {
-        return false;
-    }
-
-    fclose(f);
-    return true;
-}
-
-static bool create_database_file(const char *file_path) {
-    errno = 0;
-    FILE *f = fopen(file_path, "wb");
-    if (!f) {
-        LDB_SET_ERROR("failed to create new database file: %s\n", strerror(errno));
-        return false;
-    }
-
-    fclose(f);
-    return true;
+void ldb_clear_error() {
+    ldb_error[0] = '\0';
 }
 
 LDB_Error ldb_init(const char *output_dir, LDB *ldb) {
     if (!output_dir) {
         LDB_SET_ERROR("output_dir is NULL\n");
-        return 1;
+        return LDB_ERR_INVINP;
     }
     
     const size_t output_dir_len = strlen(output_dir);
 
     char *file_path = malloc(output_dir_len + LDB_FILE_NAME_LEN + 1);
     if (!file_path) {
-        LDB_SET_ERROR("failed to allocate memory");
-        return 1;
+        LDB_SET_ERROR("failed to allocate memory\n");
+        return LDB_ERR_NOMEM;
     }
 
     memcpy(file_path, output_dir, output_dir_len);
-    strcpy(file_path + output_dir_len, LDB_FILE_NAME);
+    strcpy(file_path + output_dir_len, LDB_FILE_NAME); // strcpy add '\0'
 
-    if (is_file_exists(file_path)) {
+    {
+        FILE *f = fopen(file_path, "rb");
+        if (f) {
+            fclose(f);
+            ldb->file_path = file_path;
+            return LDB_OK;
+        }
+    }
+
+    {
+        FILE *f = fopen(file_path, "wb");
+        if (!f) {
+            free(file_path);
+            LDB_SET_ERROR("failed to create new database file\n");
+            return LDB_ERR_IO;
+        }
+        fclose(f);
         ldb->file_path = file_path;
-        return 0;
+        return LDB_OK;
     }
-    
-    if (!create_database_file(file_path)) {
-        free(file_path);
-        return 1;
-    }
-
-    ldb->file_path = file_path;
-    return 0;
 }
 
-void ldb_close(LDB *ldb) {
+LDB_Error ldb_free(LDB *ldb) {
     if (!ldb || !ldb->file_path) {
-        return;
+        LDB_SET_ERROR("empty LDB provided to ldb_free\n");
+        return LDB_ERR_INVINP;
     }
     free(ldb->file_path);
     ldb->file_path = NULL;
+    return LDB_OK;
 }
 
-#define CHECK_FILE_OPEN(f) do { if (!(f)) { LDB_SET_ERROR("failed to open file\n"); return 1; } } while (0)
+#define CHECK_FILE_OPEN(f) do { if (!(f)) { LDB_SET_ERROR("failed to open file\n"); return LDB_ERR_IO; } } while (0)
 
 static bool ldb_record_exists(const LDB *ldb, const LDB_Record *record) {
     FILE *f = fopen(ldb->file_path, "rb");
@@ -164,31 +152,30 @@ static bool ldb_record_exists(const LDB *ldb, const LDB_Record *record) {
     while (fread(&founded_record, sizeof(founded_record), 1, f) == 1) {
         if (strcmp(record->key, founded_record.key) == 0) goto exist;
     }
-
     fclose(f);
     return false;
+    
 exist:
     fclose(f);
     return true;
 }
 
-static int ldb_add(const LDB *ldb, const LDB_Record *record) {
+static LDB_Error ldb_add(const LDB *ldb, const LDB_Record *record) {
     if (ldb_record_exists(ldb, record)) {
-        LDB_SET_ERROR("record with key %s already exists\n", record->key);
-        return 1;
+        return LDB_OK;
     }
     
     FILE *f = fopen(ldb->file_path, "ab");
     CHECK_FILE_OPEN(f);
 
     if (fwrite(record, sizeof(*record), 1, f) != 1) {
-        LDB_SET_ERROR("failed to write record to db file\n");
+        LDB_SET_ERROR("failed to write record to database file\n");
         fclose(f);
-        return 1;
+        return LDB_ERR_IO;
     }
 
     fclose(f);
-    return 0;
+    return LDB_OK;
 }
 
 LDB_Error ldb_add_int(const LDB *ldb, const char *key, int32_t value) {
@@ -200,16 +187,12 @@ LDB_Error ldb_add_int(const LDB *ldb, const char *key, int32_t value) {
 }
 
 LDB_Error ldb_add_string(const LDB *ldb, const char *key, const char *value) {
-    if (!ldb || !ldb->file_path || !key || !value) {
-        LDB_SET_ERROR("invalid argument");
-        return 1;
-    }
-    
     const size_t value_len = strlen(value);
     if (value_len > LDB_STRING_VALUE_MAX_LEN) {
         LDB_SET_ERROR("max len of string in value is %d\n", LDB_STRING_VALUE_MAX_LEN);
-        return 1;
+        return LDB_ERR_IO;
     }
+    
     LDB_Record r = {0};
     LDB_RECORD_ADD_KEY(r, key);
     r.type = LDB_TYPE_STRING;
@@ -217,7 +200,7 @@ LDB_Error ldb_add_string(const LDB *ldb, const char *key, const char *value) {
     return ldb_add(ldb, &r);
 }
 
-LDB_Error ldb_get(const LDB *ldb, const char *key, void *data, size_t size) {
+LDB_Error ldb_get(const LDB *ldb, const char *key, void *dst, size_t size) {
     FILE *f = fopen(ldb->file_path, "rb");
     CHECK_FILE_OPEN(f);
 
@@ -228,26 +211,29 @@ LDB_Error ldb_get(const LDB *ldb, const char *key, void *data, size_t size) {
         
         switch (record.type) {
         case LDB_TYPE_INT:
-            memcpy(data, &record.value.i, sizeof(record.value.i));
+            if (size < sizeof(record.value.i)) {
+                LDB_SET_ERROR("buffer is too small. Required: %zu\n", sizeof(record.value.i));
+                fclose(f);
+                return LDB_ERR_INVINP;
+            }
+            memcpy(dst, &record.value.i, sizeof(record.value.i));
             goto end;
         
         case LDB_TYPE_STRING:
-            if (size < LDB_STRING_VALUE_MAX_LEN + 1) {
-                LDB_SET_ERROR("buffer is too small. minimum - %d\n", LDB_STRING_VALUE_MAX_LEN + 1);
+            const size_t value_len = strlen(record.value.s);
+            if (size < value_len + 1) {
+                LDB_SET_ERROR("buffer is too small. required - %zu\n", value_len + 1);
                 fclose(f);
-                return 1;
+                return LDB_ERR_INVINP;
             }
-            memcpy(data, record.value.s, sizeof(record.value.s));
+            memcpy(dst, record.value.s, value_len + 1);
             goto end;
         }
     }
 
-    fclose(f);
-    return 1;
-
 end:
     fclose(f);
-    return 0;
+    return LDB_OK;
 }
 
 #endif // LDB_IMPLEMENTATION_
