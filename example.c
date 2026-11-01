@@ -11,9 +11,9 @@ int main() {
         return 1;
     }
 
-    // ldb_add_string(&ldb, "fizz", "valizz");
+    //ldb_add_string(&ldb, "fizz", "valizz");
     
-    // LDB_INT_TEST(ldb, "tuzz", 1488);
+    //LDB_INT_TEST(ldb, "tuzz", 1488);
 
     int32_t data;
     ldb_get(&ldb, "tuzz", &data, 0);

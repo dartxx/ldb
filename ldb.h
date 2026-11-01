@@ -5,6 +5,7 @@
     * Date: [2026-10-31]
 */
 
+// TODO: use error codes instead of numbers
 
 #ifndef LDB_INCLUDE_H_
 #define LDB_INCLUDE_H_
@@ -12,22 +13,35 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#define LDB_FILE_NAME "/db.ldb"
+#define LDB_FILE_NAME_LEN (sizeof(LDB_FILE_NAME) - 1)
+
+#define LDB_KEY_MAX_LEN 64
+#define LDB_STRING_VALUE_MAX_LEN 128
+
 typedef struct {
     char *file_path;
 } LDB;
 
+typedef enum {
+    LDB_OK          = 0,
+    LDB_ERR_NOMEM   = 1,
+    LDB_ERR_INVINP  = 2,
+    LDB_ERR_IO      = 3,
+} LDB_Error;
+
 const char *ldb_get_error();
 
-int ldb_init(const char *output_dir, LDB *ldb);
-void ldb_close(LDB *ldb);
+LDB_Error ldb_init(const char *output_dir, LDB *ldb);
+LDB_Error ldb_free(LDB *ldb);
 
-int ldb_add_int(const LDB *ldb, const char *key, int32_t value);
-int ldb_add_string(const LDB *ldb, const char *key, const char *value);
+LDB_Error ldb_add_int(const LDB *ldb, const char *key, int32_t value);
+LDB_Error ldb_add_string(const LDB *ldb, const char *key, const char *value);
 
 // In this function, if you getting string, you should provide size of string
 // It must be more than LDB_STRING_VALUE_MAX_LEN
 
-int ldb_get(const LDB *ldb, const char *key, void *data, size_t size);
+LDB_Error ldb_get(const LDB *ldb, const char *key, void *data, size_t size);
 
 #endif // LDB_INCLUDE_H_
 
@@ -44,12 +58,6 @@ int ldb_get(const LDB *ldb, const char *key, void *data, size_t size);
 #include <string.h>
 #include <errno.h>
 #include <stdint.h>
-
-#define LDB_FILE_NAME "/db.ldb"
-#define LDB_FILE_NAME_LEN (sizeof(LDB_FILE_NAME) - 1)
-
-#define LDB_KEY_MAX_LEN 64
-#define LDB_STRING_VALUE_MAX_LEN 128
 
 typedef enum {
     LDB_TYPE_INT,
@@ -74,11 +82,11 @@ typedef struct {
     memcpy(r.key, key, key_len + 1);                                                 \
 } while(0)
 
-#define LDB_ERROR_LEN 128
+#define LDB_ERROR_MAX_LEN 128
 
-static char ldb_error[LDB_ERROR_LEN];
+static char ldb_error[LDB_ERROR_MAX_LEN];
 
-#define LDB_SET_ERROR(...) do { snprintf(ldb_error, LDB_ERROR_LEN, __VA_ARGS__); } while (0)
+#define LDB_SET_ERROR(...) do { snprintf(ldb_error, LDB_ERROR_MAX_LEN, __VA_ARGS__); } while (0)
 
 const char *ldb_get_error() {
     return ldb_error;
@@ -106,7 +114,7 @@ static bool create_database_file(const char *file_path) {
     return true;
 }
 
-int ldb_init(const char *output_dir, LDB *ldb) {
+LDB_Error ldb_init(const char *output_dir, LDB *ldb) {
     if (!output_dir) {
         LDB_SET_ERROR("output_dir is NULL\n");
         return 1;
@@ -147,7 +155,29 @@ void ldb_close(LDB *ldb) {
 
 #define CHECK_FILE_OPEN(f) do { if (!(f)) { LDB_SET_ERROR("failed to open file\n"); return 1; } } while (0)
 
-static int ldb_add(const LDB *ldb, LDB_Record *record) {
+static bool ldb_record_exists(const LDB *ldb, const LDB_Record *record) {
+    FILE *f = fopen(ldb->file_path, "rb");
+    CHECK_FILE_OPEN(f);
+    
+    LDB_Record founded_record;
+    
+    while (fread(&founded_record, sizeof(founded_record), 1, f) == 1) {
+        if (strcmp(record->key, founded_record.key) == 0) goto exist;
+    }
+
+    fclose(f);
+    return false;
+exist:
+    fclose(f);
+    return true;
+}
+
+static int ldb_add(const LDB *ldb, const LDB_Record *record) {
+    if (ldb_record_exists(ldb, record)) {
+        LDB_SET_ERROR("record with key %s already exists\n", record->key);
+        return 1;
+    }
+    
     FILE *f = fopen(ldb->file_path, "ab");
     CHECK_FILE_OPEN(f);
 
@@ -161,7 +191,7 @@ static int ldb_add(const LDB *ldb, LDB_Record *record) {
     return 0;
 }
 
-int ldb_add_int(const LDB *ldb, const char *key, int32_t value) {
+LDB_Error ldb_add_int(const LDB *ldb, const char *key, int32_t value) {
     LDB_Record r = {0};
     LDB_RECORD_ADD_KEY(r, key);
     r.type = LDB_TYPE_INT;
@@ -169,7 +199,7 @@ int ldb_add_int(const LDB *ldb, const char *key, int32_t value) {
     return ldb_add(ldb, &r);
 }
 
-int ldb_add_string(const LDB *ldb, const char *key, const char *value) {
+LDB_Error ldb_add_string(const LDB *ldb, const char *key, const char *value) {
     if (!ldb || !ldb->file_path || !key || !value) {
         LDB_SET_ERROR("invalid argument");
         return 1;
@@ -187,7 +217,7 @@ int ldb_add_string(const LDB *ldb, const char *key, const char *value) {
     return ldb_add(ldb, &r);
 }
 
-int ldb_get(const LDB *ldb, const char *key, void *data, size_t size) {
+LDB_Error ldb_get(const LDB *ldb, const char *key, void *data, size_t size) {
     FILE *f = fopen(ldb->file_path, "rb");
     CHECK_FILE_OPEN(f);
 
