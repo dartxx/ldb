@@ -1,9 +1,11 @@
 /*
-    * Name: [ldb]
-    * Description: [Single header, lightweight, local database]
-    * Author: [dartxx | kerrer1234567890@gmail.com]
-    * Date: [2026-10-31]
+    * Name:         [ldb]
+    * Description:  [Single header, lightweight, local database]
+    * Author:       [dartxx | kerrer1234567890@gmail.com]
+    * Date:         [2026-10-31]
 */
+
+// TODO: on init compute amount of records
 
 #ifndef LDB_INCLUDE_H_
 #define LDB_INCLUDE_H_
@@ -19,13 +21,15 @@
 
 typedef struct {
     char *file_path;
+    size_t records_count;
 } LDB;
 
 typedef enum {
-    LDB_OK          = 0,
-    LDB_ERR_NOMEM   = 1,
-    LDB_ERR_INVINP  = 2,
-    LDB_ERR_IO      = 3,
+    LDB_OK            = 0,
+    LDB_ERR_NOMEM     = 1,
+    LDB_ERR_INVINP    = 2,
+    LDB_ERR_IO        = 3,
+    LDB_ERR_NOTFOUND  = 4,
 } LDB_Error;
 
 const char *ldb_get_error();
@@ -34,10 +38,12 @@ void ldb_clear_error();
 LDB_Error ldb_init(const char *output_dir, LDB *ldb);
 LDB_Error ldb_free(LDB *ldb);
 
-LDB_Error ldb_add_int(const LDB *ldb, const char *key, int32_t value);
-LDB_Error ldb_add_string(const LDB *ldb, const char *key, const char *value);
+LDB_Error ldb_add_int(LDB *ldb, const char *key, int32_t value);
+LDB_Error ldb_add_string(LDB *ldb, const char *key, const char *value);
 
 LDB_Error ldb_get(const LDB *ldb, const char *key, void *dst, size_t size);
+
+LDB_Error ldb_delete(LDB *ldb, const char *key);
 
 #endif // LDB_INCLUDE_H_
 
@@ -114,6 +120,7 @@ LDB_Error ldb_init(const char *output_dir, LDB *ldb) {
         if (f) {
             fclose(f);
             ldb->file_path = file_path;
+            ldb->records_count = 0;
             return LDB_OK;
         }
     }
@@ -127,6 +134,7 @@ LDB_Error ldb_init(const char *output_dir, LDB *ldb) {
         }
         fclose(f);
         ldb->file_path = file_path;
+        ldb->records_count = 0;
         return LDB_OK;
     }
 }
@@ -160,7 +168,7 @@ exist:
     return true;
 }
 
-static LDB_Error ldb_add(const LDB *ldb, const LDB_Record *record) {
+static LDB_Error ldb_add(LDB *ldb, const LDB_Record *record) {
     if (ldb_record_exists(ldb, record)) {
         return LDB_OK;
     }
@@ -175,10 +183,12 @@ static LDB_Error ldb_add(const LDB *ldb, const LDB_Record *record) {
     }
 
     fclose(f);
+
+    ldb->records_count += 1;
     return LDB_OK;
 }
 
-LDB_Error ldb_add_int(const LDB *ldb, const char *key, int32_t value) {
+LDB_Error ldb_add_int(LDB *ldb, const char *key, int32_t value) {
     LDB_Record r = {0};
     LDB_RECORD_ADD_KEY(r, key);
     r.type = LDB_TYPE_INT;
@@ -186,7 +196,7 @@ LDB_Error ldb_add_int(const LDB *ldb, const char *key, int32_t value) {
     return ldb_add(ldb, &r);
 }
 
-LDB_Error ldb_add_string(const LDB *ldb, const char *key, const char *value) {
+LDB_Error ldb_add_string(LDB *ldb, const char *key, const char *value) {
     const size_t value_len = strlen(value);
     if (value_len > LDB_STRING_VALUE_MAX_LEN) {
         LDB_SET_ERROR("max len of string in value is %d\n", LDB_STRING_VALUE_MAX_LEN);
@@ -231,9 +241,58 @@ LDB_Error ldb_get(const LDB *ldb, const char *key, void *dst, size_t size) {
         }
     }
 
+    fclose(f);
+    return LDB_ERR_NOTFOUND;
+
 end:
     fclose(f);
     return LDB_OK;
 }
 
-#endif // LDB_IMPLEMENTATION_
+LDB_Error ldb_delete(LDB *ldb, const char *key) {
+    if (ldb->records_count == 0) {
+        LDB_SET_ERROR("there is no records to delete at all\n");
+        return LDB_ERR_INVINP;
+    }
+    
+    FILE *f = fopen(ldb->file_path, "rb");
+    CHECK_FILE_OPEN(f);
+
+    LDB_Record record;
+
+    size_t records_i = 0;
+
+    size_t new_records_count = ldb->records_count - 1;
+    LDB_Record *records = malloc(sizeof(record) * new_records_count);
+
+    while (fread(&record, sizeof(record), 1, f) == 1) {
+        if (strcmp(record.key, key) == 0) continue;
+
+        if (records_i == new_records_count) {
+            free(records);
+            fclose(f);
+            LDB_SET_ERROR("failed to delete record: record not exists\n");
+            return LDB_ERR_NOTFOUND;
+        }
+        records[records_i++] = record;
+    }
+    fclose(f);
+
+    f = fopen(ldb->file_path, "wb");
+    CHECK_FILE_OPEN(f);
+
+    if (fwrite(records, sizeof(*records), new_records_count, f) != new_records_count) {
+        free(records);
+        fclose(f);
+        LDB_SET_ERROR("failed to rewrite records\n");
+        return LDB_ERR_IO;
+    }
+
+    ldb->records_count = new_records_count;
+    
+    fclose(f);
+    free(records);
+    return LDB_OK;
+}
+
+#endif // LDB_IMPLEMENTATION
